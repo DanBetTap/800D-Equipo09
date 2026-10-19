@@ -1,0 +1,75 @@
+rules_version = '2';
+
+// Reglas de seguridad de Cloud Firestore para Balancore.
+// Modelo de datos:
+//   users/{uid}                            -> perfil del usuario (doc id == uid)
+//     users/{uid}/weightHistory/{id}
+//     users/{uid}/routines/{day}
+//     users/{uid}/exerciseDefaults/{id}
+//     users/{uid}/dailyLogs/{yyyy-mm-dd}
+//     users/{uid}/savedFoods/{id}
+//     users/{uid}/savedRecipes/{id}
+//     users/{uid}/workoutSessions/{id}
+//     users/{uid}/customExercises/{id}
+//     users/{uid}/favoriteExercises/{id}
+//   usernames/{usernameLower}              -> { uid, username }
+//
+// NOTA: ya no existe la regla abierta temporal de desarrollo. Los datos sólo
+// son accesibles por su dueño autenticado.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    // Un doc de `usernames` sólo puede apuntar a la cuenta autenticada: el uid
+    // debe coincidir con el token y no debe traer campos extra. No guarda el
+    // correo, así que la lectura pública (para comprobar disponibilidad) no
+    // expone datos personales.
+    function validUsernameDoc() {
+      return request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'username', 'updatedAt'])
+        && request.resource.data.username is string
+        && request.resource.data.username.size() > 0
+        && request.resource.data.username.size() <= 30;
+    }
+
+    // Cada usuario sólo accede a su propio documento y subcolecciones, y sólo
+    // con el correo verificado. La única excepción es el alta inicial del perfil
+    // (create), que ocurre durante el registro, antes de verificar el correo.
+    match /users/{uid} {
+      allow create: if isOwner(uid);
+      allow read, update, delete: if isOwner(uid) && isVerified();
+
+      match /{sub=**} {
+        allow read, write: if isOwner(uid) && isVerified();
+      }
+    }
+
+    // Registro de nombres de usuario para garantizar su unicidad. El alta
+    // ocurre antes de tener sesión en algunos casos, así que la lectura es
+    // pública; el doc sólo contiene uid + username (sin correo).
+    match /usernames/{username} {
+      allow read: if true;
+
+      // create: solo si el doc no existe (implícito) y el uid es el del
+      // usuario autenticado.
+      allow create: if request.auth != null && validUsernameDoc();
+
+      // update: SOLO el dueño actual puede modificarlo. Sin esta comprobación
+      // de resource.data.uid, cualquiera podría sobrescribir el username de
+      // otro (set = create-or-update) y apropiarse del nombre.
+      allow update: if request.auth != null
+        && resource.data.uid == request.auth.uid
+        && validUsernameDoc();
+
+      allow delete: if request.auth != null
+        && resource.data.uid == request.auth.uid;
+    }
+  }
+}
