@@ -1,0 +1,31 @@
+# Artefactos de compilación (Flutter/Dart)
+build/
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+
+# Gradle / Android
+.gradle/
+local.properties
+key.properties
+*.jks
+*.keystore
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Ofimática (locks temporales de LibreOffice/Word)
+.~lock.*
+~$*
+
+# Seguridad: nunca subir credenciales
+.env
+*.pem
+*serviceAccount*.json
